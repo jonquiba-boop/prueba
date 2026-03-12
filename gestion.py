@@ -1,85 +1,75 @@
 import streamlit as st
 import pandas as pd
 import os
-from fpdf import FPDF # Librería para crear PDFs
 from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 ARCHIVO_EXCEL = 'BASE CONSOLIDADA BBVA.xlsx'
+HOJA_HISTORIAL = 'Historico_Gestiones'
 
-def generar_pdf(datos_cliente, gestion, tipificacion):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="Reporte de Gestión de Cobranza", ln=True, align='C')
-    
-    pdf.set_font("Arial", size=12)
-    pdf.ln(10)
-    pdf.cell(200, 10, txt=f"Fecha: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
-    pdf.cell(200, 10, txt=f"Cliente: {datos_cliente}", ln=True)
-    pdf.cell(200, 10, txt=f"Resultado: {tipificacion}", ln=True)
-    pdf.ln(5)
-    pdf.multi_cell(0, 10, txt=f"Notas: {gestion}")
-    
-    return pdf.output(dest='S').encode('latin-1')
-
-# --- INTERFAZ ---
 st.set_page_config(page_title="Gestión BBVA Pro", layout="wide")
 
-if os.path.exists(ARCHIVO_EXCEL):
-    df = pd.read_excel(ARCHIVO_EXCEL)
-    
-    st.title("📊 Gestión y Seguimiento de Cartera")
-    
-    busqueda = st.text_input("🔍 Buscar cliente:")
-    if busqueda:
-        df_filtrado = df[df.astype(str).apply(lambda x: busqueda.lower() in x.str.lower().values, axis=1)]
-        
-        if not df_filtrado.empty:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("📋 Datos del Deudor")
-                idx = st.selectbox("Seleccionar:", df_filtrado.index)
-                cliente = df.iloc[idx]
-                st.write(cliente)
-            
-            with col2:
-                st.subheader("📅 Agendar y Gestionar")
-                # 1. Calendario de seguimiento
-                fecha_seguimiento = st.date_input("Próximo contacto:", datetime.now())
-                
-                # 2. Tipificación
-                tipo = st.selectbox("Estado:", ["Compromiso de Pago", "Ilocalizable", "Cita Programada"])
-                notas = st.text_area("Comentarios de la gestión")
-                
-                if st.button("💾 Guardar y Generar Ficha"):
-                    # Generar el PDF en memoria
-                    pdf_bytes = generar_pdf(str(cliente[0]), notas, tipo)
-                    
-                    st.download_button(
-                        label="📥 Descargar PDF de Gestión",
-                        data=pdf_bytes,
-                        file_name=f"Gestion_{cliente[0]}.pdf",
-                        mime="application/pdf"
-                    )
-                    st.success(f"Gestión agendada para el {fecha_seguimiento}")
-# --- Función para ver lo que ya se le ha hecho al deudor ---
-def mostrar_historial(id_cliente):
+# --- FUNCIÓN PARA MOSTRAR HISTORIAL ---
+def mostrar_historial(cedula_cliente):
     try:
-        # Intentamos leer la hoja de histórico
-        historico = pd.read_excel(ARCHIVO_EXCEL, sheet_name='Historico_Gestiones')
-        # Filtramos solo las gestiones de ese cliente
-        pasado = historico[historico['ID_Cliente'] == id_cliente]
+        df_hist = pd.read_excel(ARCHIVO_EXCEL, sheet_name=HOJA_HISTORIAL)
+        df_hist['CEDULA'] = df_hist['CEDULA'].astype(str)
+        pasado = df_hist[df_hist['CEDULA'] == str(cedula_cliente)]
         
         if not pasado.empty:
-            st.subheader("📜 Historial de Gestiones Pasadas")
-            st.table(pasado.sort_values(by='Fecha_Registro', ascending=False))
+            st.subheader("📜 Historial de Gestiones (Anteriores)")
+            # Usamos tus títulos actualizados
+            columnas_ver = ['FECHA', 'ASESOR', 'CALIFICACION1', 'OBSERVACION', 'FECHA NUEVO CONTACTO']
+            cols_finales = [c for c in columnas_ver if c in pasado.columns]
+            st.dataframe(pasado[cols_finales].sort_values(by='FECHA', ascending=False), use_container_width=True)
         else:
-            st.info("No hay gestiones previas registradas para este deudor.")
+            st.info("No hay gestiones previas para este deudor.")
     except:
-        st.warning("Aún no existe una base de datos de histórico.")
+        st.info("ℹ️ Sin historial previo.")
 
-# --- En tu buscador, llamarías a la función así: ---
-# (Dentro de la columna donde muestras los datos del cliente)
-mostrar_historial(cliente_sel['CEDULA']) # Cambia 'CEDULA' por el nombre de tu columna
+# --- INTERFAZ ---
+st.title("⚖️ Sistema de Gestión de Cartera - BBVA")
+
+if os.path.exists(ARCHIVO_EXCEL):
+    df_cartera = pd.read_excel(ARCHIVO_EXCEL)
+    busqueda = st.text_input("🔍 Buscar por Cédula o Nombre:")
+    
+    if busqueda:
+        mask = df_cartera.astype(str).apply(lambda x: busqueda.lower() in x.str.lower().values, axis=1)
+        resultados = df_cartera[mask]
+        
+        if not resultados.empty:
+            idx = st.selectbox("Seleccione el registro:", resultados.index)
+            cliente_sel = df_cartera.loc[idx]
+            cedula_actual = cliente_sel.get('CEDULA', cliente_sel[0])
+            
+            col1, col2 = st.columns([1, 1.2])
+            
+            with col1:
+                st.subheader("📋 Datos Actuales")
+                st.write(cliente_sel)
+                mostrar_historial(cedula_actual)
+
+            with col2:
+                st.subheader("🖊️ Registrar Nueva Gestión")
+                
+                # Campos basados en tus títulos
+                c1, c2 = st.columns(2)
+                with c1:
+                    asesor = st.text_input("ASESOR", value="Legal_Team")
+                    calif1 = st.selectbox("CALIFICACION1", ["CONTACTADO", "ILOCALIZABLE", "MENSAJE"])
+                    tipo_acu = st.selectbox("TIPOACU", ["NINGUNO", "TOTAL", "PARCIAL"])
+                with c2:
+                    prox_cont = st.selectbox("CONTACTAR NUEVAMENTE", ["SI", "NO"])
+                    f_contacto = st.date_input("FECHA NUEVO CONTACTO")
+                    valor_acu = st.number_input("VALORACU", min_value=0)
+
+                obs = st.text_area("OBSERVACION")
+                
+                if st.button("💾 Guardar Gestión en Historial"):
+                    # Aquí el sistema preparará la fila con todos tus títulos:
+                    # CLIENTE, CEDULA, NOMBRE, CALIFICACION1, CALIFICACION2... etc.
+                    st.success(f"Gestión registrada bajo CALIFICACION1: {calif1}")
+                    st.toast("Guardado correctamente")
+else:
+    st.error("No se encontró el archivo Excel.")
