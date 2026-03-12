@@ -1,129 +1,116 @@
 import streamlit as st
 import pandas as pd
 import os
+from datetime import datetime
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(
-    page_title="Free Management - Gestión de Cartera",
-    page_icon="⚖️",
-    layout="wide"
-)
-
-# COLOR INSTITUCIONAL
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Free Management - Gestión BBVA", layout="wide")
 COLOR_CORP = "#17891e"
+ARCHIVO_EXCEL = 'BASE CONSOLIDADA BBVA.xlsx'
 
-# Estilo CSS personalizado con tu color
+# Estilo CSS
 st.markdown(f"""
     <style>
-    /* Color de fondo del encabezado y sidebar */
-    .stApp {{
-        background-color: #f8f9fa;
-    }}
-    /* Botones principales */
+    .stApp {{ background-color: #f8f9fa; }}
     div.stButton > button:first-child {{
         background-color: {COLOR_CORP};
         color: white;
         border-radius: 8px;
-        border: none;
-        padding: 0.5rem 1rem;
+        width: 100%;
         font-weight: bold;
     }}
-    div.stButton > button:hover {{
-        background-color: #126b17;
-        color: white;
-    }}
-    /* Títulos y secciones */
-    h1, h2, h3 {{
-        color: {COLOR_CORP};
-    }}
-    /* Estilo para las tarjetas de información */
+    h1, h2, h3 {{ color: {COLOR_CORP}; }}
     .info-card {{
         background-color: white;
-        padding: 20px;
+        padding: 15px;
         border-radius: 10px;
         border-left: 5px solid {COLOR_CORP};
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
     }}
     </style>
     """, unsafe_allow_html=True)
-
-ARCHIVO_EXCEL = 'BASE CONSOLIDADA BBVA.xlsx'
 
 def limpiar_id(dato):
     if pd.isna(dato): return ""
     return str(dato).strip().split('.')[0]
 
-# --- ENCABEZADO INSTITUCIONAL ---
-st.markdown(f"""
-    <div style="background-color: {COLOR_CORP}; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
-        <h1 style="color: white; margin: 0;">FREE MANAGEMENT S.A.S.</h1>
-        <p style="color: #e0e0e0; margin: 0;">Sistema Centralizado de Gestión de Cartera - BBVA</p>
-    </div>
-    """, unsafe_allow_html=True)
+# --- CARGA DE DATOS ---
+@st.cache_data
+def cargar_base_completa():
+    if os.path.exists(ARCHIVO_EXCEL):
+        excel = pd.ExcelFile(ARCHIVO_EXCEL)
+        cartera = excel.parse(0)
+        historial = excel.parse(1) if len(excel.sheet_names) > 1 else pd.DataFrame()
+        return cartera, historial
+    return None, None
 
-if os.path.exists(ARCHIVO_EXCEL):
-    try:
-        excel_completo = pd.ExcelFile(ARCHIVO_EXCEL)
-        df_principal = excel_completo.parse(0) 
+df_cartera, df_historial_base = cargar_base_completa()
+
+# Inicializar historial en la sesión para que sea "escribible"
+if 'historial_dinamico' not in st.session_state and df_historial_base is not None:
+    st.session_state.historial_dinamico = df_historial_base
+
+# --- ENCABEZADO ---
+st.markdown(f'<div style="background-color:{COLOR_CORP};padding:15px;border-radius:10px;text-align:center"><h1 style="color:white;margin:0">FREE MANAGEMENT S.A.S.</h1></div>', unsafe_allow_html=True)
+
+if df_cartera is not None:
+    busqueda = st.text_input("🔍 Buscar Cédula:", placeholder="Ingrese identificación...")
+
+    if busqueda:
+        busqueda_clean = limpiar_id(busqueda)
+        col_id_cartera = 'No cedula' if 'No cedula' in df_cartera.columns else df_cartera.columns[1]
         
-        # --- BUSCADOR ---
-        busqueda = st.text_input("🔍 Ingrese Cédula del deudor para iniciar:", placeholder="Ej: 80503683")
+        resultado = df_cartera[df_cartera[col_id_cartera].apply(limpiar_id) == busqueda_clean]
 
-        if busqueda:
-            busqueda_clean = limpiar_id(busqueda)
-            col_id_cartera = 'No cedula' if 'No cedula' in df_principal.columns else df_principal.columns[1]
-            mask = df_principal[col_id_cartera].apply(limpiar_id) == busqueda_clean
-            resultados = df_principal[mask]
+        if not resultado.empty:
+            cliente = resultado.iloc[0]
             
-            if not resultados.empty:
-                idx = st.selectbox("Coincidencias encontradas:", resultados.index)
-                cliente = df_principal.loc[idx]
-                
-                st.markdown("---")
-                
-                # --- PANEL DE GESTIÓN ---
-                col_info, col_gest = st.columns([1, 1])
-                
-                with col_info:
-                    st.markdown(f"### 📋 Información del Cliente")
-                    st.markdown(f"""
-                    <div class="info-card">
-                        <p><strong>Nombre:</strong> {cliente.get('Nombre Completo', 'N/A')}</p>
-                        <p><strong>Cédula:</strong> {cliente.get('No cedula', 'N/A')}</p>
-                        <p><strong>Ciudad:</strong> {cliente.get('CIUDAD DE RESIDENCIA', 'N/A')}</p>
-                        <p><strong>Saldo Total:</strong> <span style="color: {COLOR_CORP}; font-weight: bold;">${cliente.get('SALDO TOTAL', 0):,.0f} COP</span></p>
-                        <p><strong>Días Mora:</strong> {cliente.get('DIAS DE MORA', 'N/A')}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col_gest:
-                    st.markdown("### ✍️ Registrar Nueva Acción")
-                    obs = st.text_area("Notas de la gestión:", placeholder="Describa el acuerdo o resultado de la llamada...")
-                    soporte = st.file_uploader("📁 Cargar soporte de pago o acta", type=['pdf', 'png', 'jpg'])
-                    
-                    if st.button("💾 Guardar Gestión en Base de Datos"):
-                        st.balloons()
-                        st.success("Gestión almacenada correctamente.")
+            col_info, col_gest = st.columns([1, 1])
+            
+            with col_info:
+                st.markdown("### 📋 Datos del Deudor")
+                st.markdown(f"""<div class="info-card">
+                    <b>Nombre:</b> {cliente.get('Nombre Completo', 'N/A')}<br>
+                    <b>Cédula:</b> {cliente.get('No cedula', 'N/A')}<br>
+                    <b>Saldo:</b> ${cliente.get('SALDO TOTAL', 0):,.0f}<br>
+                    <b>Días Mora:</b> {cliente.get('DIAS DE MORA', 'N/A')}
+                </div>""", unsafe_allow_html=True)
 
-                # --- HISTORIAL ---
-                if len(excel_completo.sheet_names) > 1:
-                    df_hist = excel_completo.parse(1)
-                    col_id_hist = df_hist.columns[1]
-                    mask_hist = df_hist[col_id_hist].apply(limpiar_id) == busqueda_clean
-                    pasado = df_hist[mask_hist]
-                    
-                    st.markdown(f"### 📜 Historial de Movimientos")
-                    if not pasado.empty:
-                        # Seleccionamos columnas C a L (índices 2 al 11)
-                        detalle = pasado.iloc[:, 2:12]
-                        st.dataframe(detalle, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Sin registros históricos para este deudor.")
-            else:
-                st.error("La cédula ingresada no existe en la base de Cartera.")
+            with col_gest:
+                st.markdown("### ✍️ Nueva Gestión")
+                nueva_obs = st.text_area("Observaciones:", height=80)
+                adjunto = st.file_uploader("Adjuntar soporte", type=['pdf','jpg','png'])
                 
-    except Exception as e:
-        st.error(f"Error en el procesamiento: {e}")
+                if st.button("💾 Registrar Gestión"):
+                    # Crear nueva fila para el historial
+                    nueva_fila = {
+                        'CEDULA': busqueda_clean,
+                        'FECHA': datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        'OBSERVACION': nueva_obs,
+                        'ASESOR': "Gestor Actual", # Aquí puedes poner el nombre del abogado
+                        'CALIFICACION1': "GESTIONADO"
+                    }
+                    # Insertar al principio del historial de la sesión
+                    st.session_state.historial_dinamico = pd.concat([pd.DataFrame([nueva_fila]), st.session_state.historial_dinamico], ignore_index=True)
+                    st.success("✅ Gestión añadida al historial local.")
+
+            # --- HISTORIAL (Ordenado por lo más reciente) ---
+            st.markdown("---")
+            st.markdown("### 📜 Historial de Gestiones (Más reciente primero)")
+            
+            hist_temp = st.session_state.historial_dinamico
+            col_id_hist = hist_temp.columns[1] # CEDULA
+            
+            # Filtrar historial por el cliente actual
+            mask_hist = hist_temp[col_id_hist].apply(limpiar_id) == busqueda_clean
+            final_hist = hist_temp[mask_hist]
+
+            if not final_hist.empty:
+                # Mostramos columnas de interés (C a L o similares)
+                # Usamos .reset_index(drop=True) para que se vea limpio
+                st.dataframe(final_hist.iloc[:, 0:12], use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay gestiones previas registradas.")
+
 else:
-    st.error("Falta el archivo 'BASE CONSOLIDADA BBVA.xlsx' en el repositorio.")
+    st.error("No se pudo cargar la base de datos.")
