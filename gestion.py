@@ -73,3 +73,31 @@ if os.path.exists(ARCHIVO_EXCEL):
                     st.toast("Guardado correctamente")
 else:
     st.error("No se encontró el archivo Excel.")
+def mostrar_historial(cedula_cliente):
+    try:
+        # Cargamos el historial
+        df_hist = pd.read_excel(ARCHIVO_EXCEL, sheet_name=HOJA_HISTORIAL)
+        
+        # --- PASO CLAVE: Limpiar nombres de columnas ---
+        # Esto elimina espacios invisibles y pasa todo a mayúsculas para que coincida
+        df_hist.columns = [str(c).strip().upper() for c in df_hist.columns]
+        
+        # Filtramos por CEDULA
+        df_hist['CEDULA'] = df_hist['CEDULA'].astype(str)
+        pasado = df_hist[df_hist['CEDULA'] == str(cedula_cliente)]
+        
+        if not pasado.empty:
+            st.subheader("📜 Historial de Gestiones")
+            
+            # Definimos las columnas que queremos ver (en mayúsculas por la limpieza)
+            columnas_deseadas = ['FECHA', 'ASESOR', 'CALIFICACION1', 'OBSERVACION', 'FECHA NUEVO CONTACTO']
+            
+            # Solo mostramos las que realmente existen en el archivo
+            columnas_finales = [c for c in columnas_deseadas if c in pasado.columns]
+            
+            # Mostramos la tabla
+            st.dataframe(pasado[columnas_finales].sort_values(by='FECHA', ascending=False), use_container_width=True)
+        else:
+            st.info("No hay registros previos en la columna OBSERVACION para esta cédula.")
+    except Exception as e:
+        st.error(f"Error técnico al leer el historial: {e}")
