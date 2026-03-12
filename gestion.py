@@ -2,27 +2,31 @@ import streamlit as st
 import pandas as pd
 import os
 
-# Configuración básica
-st.set_page_config(page_title="Sistema de Gestión", layout="wide")
+# CONFIGURACIÓN DEL NOMBRE EXACTO
+# Debe ser idéntico al que subiste a GitHub
+ARCHIVO_EXCEL = 'BASE CONSOLIDADA BBVA.xlsx'
 
-# Forzar la ruta del archivo Excel
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ARCHIVO_EXCEL = os.path.join(BASE_DIR, 'base_datos.xlsx')
+st.set_page_config(page_title="Gestión BBVA", layout="wide")
 
-st.title("🚀 Sistema de Gestión de Cartera")
+st.title("📊 Sistema de Gestión - Base BBVA")
 
-# Intentar cargar los datos
-try:
-    if os.path.exists(ARCHIVO_EXCEL):
+if os.path.exists(ARCHIVO_EXCEL):
+    try:
+        # Cargamos el Excel
         df = pd.read_excel(ARCHIVO_EXCEL)
-        st.success("Base de datos cargada correctamente")
+        st.success("✅ Base de datos conectada con éxito")
         
-        # Buscador sencillo
-        busqueda = st.text_input("Buscar cliente por nombre:")
+        # Buscador por cédula o nombre
+        busqueda = st.text_input("🔍 Buscar en la base consolidada:")
         if busqueda:
-            resultado = df[df.astype(str).apply(lambda x: busqueda.lower() in x.str.lower().values, axis=1)]
-            st.dataframe(resultado)
-    else:
-        st.error(f"No encuentro el archivo: {ARCHIVO_EXCEL}. Asegúrate de que se llame exactamente así en GitHub.")
-except Exception as e:
-    st.error(f"Error al leer el Excel: {e}")
+            # Filtramos en todas las columnas
+            mask = df.astype(str).apply(lambda x: busqueda.lower() in x.str.lower().values, axis=1)
+            df_filtrado = df[mask]
+            st.dataframe(df_filtrado)
+        else:
+            st.write("Escribe un nombre o identificación para empezar.")
+            
+    except Exception as e:
+        st.error(f"Error al leer el archivo: {e}")
+else:
+    st.error(f"⚠️ No se encontró el archivo '{ARCHIVO_EXCEL}'. Verifica el nombre en GitHub.")
