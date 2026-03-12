@@ -1,80 +1,74 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 ARCHIVO_EXCEL = 'BASE CONSOLIDADA BBVA.xlsx'
-HOJA_HISTORIAL = 'Historico_Gestiones'
 
-st.set_page_config(page_title="Gestión de Cartera Pro", layout="wide")
+st.set_page_config(page_title="Gestión BBVA - Profesional", layout="wide")
 
-# --- FUNCIÓN DE HISTORIAL CON LIMPIEZA DE DATOS ---
-def mostrar_historial_bloque(cedula_cliente):
+def mostrar_historial_real(cedula_cliente):
     try:
-        # 1. Leer historial
-        df_hist = pd.read_excel(ARCHIVO_EXCEL, sheet_name=HOJA_HISTORIAL)
+        # Cargamos la pestaña de historial (Hoja 2)
+        df_hist = pd.read_excel(ARCHIVO_EXCEL, sheet_name='Historico_Gestiones')
         
-        # 2. Limpieza de nombres de columnas (quitar espacios y poner en mayúsculas)
-        df_hist.columns = [str(c).strip().upper() for c in df_hist.columns]
+        # Normalizamos la columna CEDULA en el historial
+        df_hist['CEDULA'] = df_hist['CEDULA'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+        cedula_target = str(cedula_cliente).strip().replace('.0', '')
         
-        # 3. Normalización de Cédulas (Crucial para que el match funcione)
-        # Convertimos ambas a string, quitamos decimales (.0) y espacios
-        df_hist['CEDULA'] = df_hist['CEDULA'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        cedula_target = str(cedula_cliente).replace('.0', '').strip()
-        
-        # 4. Filtrar
+        # Filtramos
         pasado = df_hist[df_hist['CEDULA'] == cedula_target]
         
         if not pasado.empty:
             st.divider()
-            st.subheader(f"📜 Historial Detallado (Columnas C a L)")
-            # Seleccionamos columnas de la 3ra (índice 2) a la 12va (índice 11)
-            detalle = pasado.iloc[:, 2:12]
+            st.subheader("📜 Historial de Gestiones (Columnas C a L)")
+            
+            # Según tu archivo, de la C a la L son los resultados y observaciones
+            # Seleccionamos las columnas por posición para no fallar por nombres
+            detalle = pasado.iloc[:, 2:12] 
+            
             st.dataframe(detalle, use_container_width=True, hide_index=True)
         else:
-            st.info(f"No se encontró historial para la cédula: {cedula_target}")
-            # Línea de depuración opcional para que veas qué hay en el Excel:
-            # st.write("Primeras 5 cédulas en historial:", df_hist['CEDULA'].head().tolist())
-            
+            st.info(f"No se encontraron gestiones previas para la cédula {cedula_target} en la base de datos.")
     except Exception as e:
-        st.warning(f"Aviso: Verifica que la pestaña se llame '{HOJA_HISTORIAL}'. Error: {e}")
+        st.error("Asegúrate de que la pestaña se llame 'Historico_Gestiones' en tu Excel.")
 
 # --- INTERFAZ ---
-st.title("⚖️ Panel de Gestión de Cartera - BBVA")
+st.title("⚖️ Sistema de Gestión de Cartera BBVA")
 
 if os.path.exists(ARCHIVO_EXCEL):
-    df_principal = pd.read_excel(ARCHIVO_EXCEL)
+    # Cargamos Cartera (Hoja 1)
+    df_cartera = pd.read_excel(ARCHIVO_EXCEL, sheet_name=0)
     
     busqueda = st.text_input("🔍 Buscar por Cédula o Nombre:")
     
     if busqueda:
-        mask = df_principal.astype(str).apply(lambda x: busqueda.lower() in x.str.lower().values, axis=1)
-        resultados = df_principal[mask]
+        # Buscamos en toda la tabla
+        mask = df_cartera.astype(str).apply(lambda x: busqueda.lower() in x.str.lower().values, axis=1)
+        resultados = df_cartera[mask]
         
         if not resultados.empty:
             idx = st.selectbox("Seleccione el registro:", resultados.index)
-            cliente_sel = df_principal.loc[idx]
+            cliente_sel = df_cartera.loc[idx]
             
-            # Extraer cédula de la base principal
-            cedula_id = cliente_sel.get('No cedula', cliente_sel.get('CEDULA', cliente_sel[0]))
+            # USAMOS EL NOMBRE REAL DE TU COLUMNA: 'No cedula'
+            cedula_id = cliente_sel['No cedula']
             
-            col_info, col_form = st.columns([1, 1])
+            col1, col2 = st.columns(2)
             
-            with col_info:
-                st.subheader("📋 Datos del Cliente")
+            with col1:
+                st.subheader("📋 Datos Actuales")
                 st.write(cliente_sel)
             
-            with col_form:
-                st.subheader("✍️ Nueva Gestión")
-                # Formulario simplificado para probar
-                obs = st.text_area("OBSERVACION")
-                if st.button("💾 Guardar en Historial"):
+            with col2:
+                st.subheader("✍️ Registrar Gestión")
+                obs = st.text_area("Nueva Observación")
+                if st.button("💾 Guardar"):
                     st.success("Gestión registrada")
             
-            # MOSTRAR EL HISTORIAL AL FINAL
-            mostrar_historial_bloque(cedula_id)
+            # Mostramos el historial usando la cédula extraída
+            mostrar_historial_real(cedula_id)
         else:
-            st.error("No se encontraron coincidencias.")
+            st.warning("No se encontraron resultados.")
 else:
-    st.error("Archivo Excel no encontrado en el repositorio.")
+    st.error("No se encontró el archivo 'BASE CONSOLIDADA BBVA.xlsx'.")
