@@ -64,3 +64,22 @@ if os.path.exists(ARCHIVO_EXCEL):
                         mime="application/pdf"
                     )
                     st.success(f"Gestión agendada para el {fecha_seguimiento}")
+# --- Función para ver lo que ya se le ha hecho al deudor ---
+def mostrar_historial(id_cliente):
+    try:
+        # Intentamos leer la hoja de histórico
+        historico = pd.read_excel(ARCHIVO_EXCEL, sheet_name='Historico_Gestiones')
+        # Filtramos solo las gestiones de ese cliente
+        pasado = historico[historico['ID_Cliente'] == id_cliente]
+        
+        if not pasado.empty:
+            st.subheader("📜 Historial de Gestiones Pasadas")
+            st.table(pasado.sort_values(by='Fecha_Registro', ascending=False))
+        else:
+            st.info("No hay gestiones previas registradas para este deudor.")
+    except:
+        st.warning("Aún no existe una base de datos de histórico.")
+
+# --- En tu buscador, llamarías a la función así: ---
+# (Dentro de la columna donde muestras los datos del cliente)
+mostrar_historial(cliente_sel['CEDULA']) # Cambia 'CEDULA' por el nombre de tu columna
