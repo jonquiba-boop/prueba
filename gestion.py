@@ -9,76 +9,72 @@ HOJA_HISTORIAL = 'Historico_Gestiones'
 
 st.set_page_config(page_title="Gestión de Cartera Pro", layout="wide")
 
-# --- FUNCIÓN PARA MOSTRAR HISTORIAL (COLUMNAS C A L) ---
+# --- FUNCIÓN DE HISTORIAL CON LIMPIEZA DE DATOS ---
 def mostrar_historial_bloque(cedula_cliente):
     try:
-        # Cargamos el historial
+        # 1. Leer historial
         df_hist = pd.read_excel(ARCHIVO_EXCEL, sheet_name=HOJA_HISTORIAL)
         
-        # Limpieza estándar de la columna de búsqueda
-        # Buscamos la columna 'CEDULA' (generalmente es la B, índice 1)
-        # Forzamos a que todas las columnas sean comparables
+        # 2. Limpieza de nombres de columnas (quitar espacios y poner en mayúsculas)
         df_hist.columns = [str(c).strip().upper() for c in df_hist.columns]
-        df_hist['CEDULA'] = df_hist['CEDULA'].astype(str)
         
-        # Filtramos por el deudor actual
-        pasado = df_hist[df_hist['CEDULA'] == str(cedula_cliente)]
+        # 3. Normalización de Cédulas (Crucial para que el match funcione)
+        # Convertimos ambas a string, quitamos decimales (.0) y espacios
+        df_hist['CEDULA'] = df_hist['CEDULA'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        cedula_target = str(cedula_cliente).replace('.0', '').strip()
+        
+        # 4. Filtrar
+        pasado = df_hist[df_hist['CEDULA'] == cedula_target]
         
         if not pasado.empty:
             st.divider()
-            st.subheader("📜 Cronología de Gestiones Anteriores (Detalle Completo)")
-            
-            # SELECCIÓN POR POSICIÓN: Columna C (2) hasta la L (11)
-            # El rango 2:12 en Python toma desde el índice 2 hasta el 11
+            st.subheader(f"📜 Historial Detallado (Columnas C a L)")
+            # Seleccionamos columnas de la 3ra (índice 2) a la 12va (índice 11)
             detalle = pasado.iloc[:, 2:12]
-            
-            # Mostramos el bloque con barra de desplazamiento si es necesario
             st.dataframe(detalle, use_container_width=True, hide_index=True)
         else:
-            st.info("No se registran gestiones previas en el bloque C-L para este número de identificación.")
+            st.info(f"No se encontró historial para la cédula: {cedula_target}")
+            # Línea de depuración opcional para que veas qué hay en el Excel:
+            # st.write("Primeras 5 cédulas en historial:", df_hist['CEDULA'].head().tolist())
             
     except Exception as e:
-        st.warning(f"Aviso: No se pudo cargar el bloque del historial. Verifique que la pestaña '{HOJA_HISTORIAL}' tenga datos.")
+        st.warning(f"Aviso: Verifica que la pestaña se llame '{HOJA_HISTORIAL}'. Error: {e}")
 
-# --- INTERFAZ DE USUARIO ---
-st.title("⚖️ Panel de Control Legal - BBVA")
+# --- INTERFAZ ---
+st.title("⚖️ Panel de Gestión de Cartera - BBVA")
 
 if os.path.exists(ARCHIVO_EXCEL):
     df_principal = pd.read_excel(ARCHIVO_EXCEL)
     
-    busqueda = st.text_input("🔍 Ingrese Cédula o Nombre del deudor:")
+    busqueda = st.text_input("🔍 Buscar por Cédula o Nombre:")
     
     if busqueda:
-        # Filtro de búsqueda en la base principal
         mask = df_principal.astype(str).apply(lambda x: busqueda.lower() in x.str.lower().values, axis=1)
         resultados = df_principal[mask]
         
         if not resultados.empty:
-            # Selector de registro
-            idx = st.selectbox("Registros encontrados:", resultados.index)
+            idx = st.selectbox("Seleccione el registro:", resultados.index)
             cliente_sel = df_principal.loc[idx]
-            cedula_id = cliente_sel.get('CEDULA', cliente_sel[0])
             
-            # Diseño en dos columnas para la gestión actual
+            # Extraer cédula de la base principal
+            cedula_id = cliente_sel.get('No cedula', cliente_sel.get('CEDULA', cliente_sel[0]))
+            
             col_info, col_form = st.columns([1, 1])
             
             with col_info:
-                st.info("📌 Datos del Perfil Seleccionado")
+                st.subheader("📋 Datos del Cliente")
                 st.write(cliente_sel)
             
             with col_form:
-                st.success("✍️ Registro de Nueva Gestión")
-                asesor = st.text_input("Asesor Responsable", value="Oficina Jurídica")
-                obs_nueva = st.text_area("Observaciones de la llamada/trámite")
-                f_seguimiento = st.date_input("Programar nuevo contacto")
-                
-                if st.button("💾 Finalizar y Guardar"):
-                    st.toast("Gestión registrada localmente")
+                st.subheader("✍️ Nueva Gestión")
+                # Formulario simplificado para probar
+                obs = st.text_area("OBSERVACION")
+                if st.button("💾 Guardar en Historial"):
+                    st.success("Gestión registrada")
             
-            # MOSTRAR EL BLOQUE C-L AL FINAL (ANCHO COMPLETO)
+            # MOSTRAR EL HISTORIAL AL FINAL
             mostrar_historial_bloque(cedula_id)
-            
         else:
-            st.error("No se encontró ningún deudor con esos datos.")
+            st.error("No se encontraron coincidencias.")
 else:
-    st.error(f"Error: El archivo '{ARCHIVO_EXCEL}' no se encuentra en el repositorio.")
+    st.error("Archivo Excel no encontrado en el repositorio.")
