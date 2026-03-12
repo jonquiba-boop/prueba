@@ -9,72 +9,73 @@ st.set_page_config(page_title="Free Management - Gestión BBVA", layout="wide")
 
 st.title("⚖️ Sistema de Gestión de Cartera - BBVA")
 
-# Función para limpiar cédulas (el problema de los .0)
+# Función mejorada para limpiar IDs
 def limpiar_id(dato):
-    return str(dato).strip().replace('.0', '')
+    if pd.isna(dato): return ""
+    # Quita espacios, .0 al final y convierte a texto
+    return str(dato).strip().split('.')[0]
 
-# --- PROCESO PRINCIPAL ---
 if os.path.exists(ARCHIVO_EXCEL):
-    # Intentamos cargar el archivo completo
     try:
         excel_completo = pd.ExcelFile(ARCHIVO_EXCEL)
+        df_principal = excel_completo.parse(0) # Hoja 1: Cartera
         
-        # Cargamos la Cartera (Hoja 1)
-        df_principal = excel_completo.parse(0)
-        
-        busqueda = st.text_input("🔍 Ingrese Cédula para buscar:")
+        # --- BUSCADOR ---
+        busqueda = st.text_input("🔍 Ingrese Cédula del deudor:")
         
         if busqueda:
-            # Limpiamos la búsqueda del usuario
             busqueda_clean = limpiar_id(busqueda)
             
-            # Buscamos en todas las columnas por si acaso
-            mask = df_principal.astype(str).apply(lambda x: busqueda_clean in x.str.strip().values, axis=1)
-            resultados = df_principal[mask]
+            # Buscamos en la columna 'No cedula' que es la de tu archivo
+            # Si no la encuentra por nombre, busca en la segunda columna (índice 1)
+            col_id_nombre = 'No cedula' if 'No cedula' in df_principal.columns else df_principal.columns[1]
+            
+            # Creamos una copia temporal de la columna limpia para comparar
+            col_comparar = df_principal[col_id_nombre].apply(limpiar_id)
+            
+            # Filtramos
+            resultados = df_principal[col_comparar == busqueda_clean]
             
             if not resultados.empty:
                 idx = st.selectbox("Seleccione el deudor:", resultados.index)
                 cliente = df_principal.loc[idx]
                 
-                # Identificamos la cédula del cliente seleccionado
-                # Probamos con los nombres de columna que tienes en tu Excel
-                cedula_cliente = cliente.get('No cedula', cliente.get('CEDULA', cliente[0]))
-                cedula_cliente_clean = limpiar_id(cedula_cliente)
-                
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.subheader("📋 Información Actual")
+                    st.subheader("📋 Información del Cliente")
                     st.write(cliente)
                 
                 with col2:
                     st.subheader("✍️ Registro de Gestión")
-                    st.text_area("Observaciones")
-                    st.button("💾 Guardar Gestión")
+                    st.text_area("Nueva Observación")
+                    st.button("💾 Guardar")
 
-                # --- MOSTRAR HISTORIAL (Hoja 2) ---
+                # --- HISTORIAL (Hoja 2) ---
                 if len(excel_completo.sheet_names) > 1:
                     df_hist = excel_completo.parse(1)
-                    # Limpiamos nombres de columnas del historial
-                    df_hist.columns = [str(c).strip().upper() for c in df_hist.columns]
+                    # Limpiamos nombres de columnas
+                    df_hist.columns = [str(c).strip() for c in df_hist.columns]
                     
-                    # Buscamos la columna de cédula en el historial (suele ser la 2da)
-                    col_id_hist = df_hist.columns[1]
-                    df_hist[col_id_hist] = df_hist[col_id_hist].apply(limpiar_id)
+                    # En el historial la columna se llama 'CEDULA' (es la segunda columna)
+                    col_id_hist = 'CEDULA' if 'CEDULA' in df_hist.columns else df_hist.columns[1]
                     
-                    pasado = df_hist[df_hist[col_id_hist] == cedula_cliente_clean]
+                    hist_comparar = df_hist[col_id_hist].apply(limpiar_id)
+                    pasado = df_hist[hist_comparar == busqueda_clean]
                     
                     if not pasado.empty:
                         st.divider()
-                        st.subheader("📜 Historial de Gestiones Anteriores (C a L)")
+                        st.subheader("📜 Historial de Gestiones (Columnas C a L)")
                         st.dataframe(pasado.iloc[:, 2:12], use_container_width=True, hide_index=True)
                     else:
-                        st.info("No se encontró historial previo para esta cédula.")
+                        st.info(f"Cédula {busqueda_clean} no tiene gestiones registradas en el historial.")
                 else:
-                    st.warning("El archivo Excel solo tiene una pestaña. No se puede mostrar el historial.")
+                    st.warning("El Excel no tiene pestaña de historial.")
             else:
-                st.error("No se encontró ningún deudor con esa cédula.")
+                st.error(f"No se encontró el deudor con cédula: {busqueda_clean}")
+                # Debug para el abogado: muestra qué columnas encontró
+                # st.write("Columnas detectadas:", list(df_principal.columns))
                 
     except Exception as e:
-        st.error(f"Error al leer el archivo: {e}")
+        st.error(f"Error técnico: {e}")
 else:
-    st.error(f"No se encuentra el archivo '{ARCHIVO_EXCEL}' en GitHub. Por favor, súbelo.")
+    st.error(f"No se encuentra el archivo '{ARCHIVO_EXCEL}' en GitHub.")
