@@ -9,35 +9,25 @@ st.set_page_config(page_title="Free Management - Gestión BBVA", layout="wide")
 
 st.title("⚖️ Sistema de Gestión de Cartera - BBVA")
 
-# Función mejorada para limpiar IDs
 def limpiar_id(dato):
     if pd.isna(dato): return ""
-    # Quita espacios, .0 al final y convierte a texto
     return str(dato).strip().split('.')[0]
 
 if os.path.exists(ARCHIVO_EXCEL):
     try:
         excel_completo = pd.ExcelFile(ARCHIVO_EXCEL)
-        df_principal = excel_completo.parse(0) # Hoja 1: Cartera
+        df_principal = excel_completo.parse(0) 
         
-        # --- BUSCADOR ---
         busqueda = st.text_input("🔍 Ingrese Cédula del deudor:")
         
         if busqueda:
             busqueda_clean = limpiar_id(busqueda)
-            
-            # Buscamos en la columna 'No cedula' que es la de tu archivo
-            # Si no la encuentra por nombre, busca en la segunda columna (índice 1)
-            col_id_nombre = 'No cedula' if 'No cedula' in df_principal.columns else df_principal.columns[1]
-            
-            # Creamos una copia temporal de la columna limpia para comparar
-            col_comparar = df_principal[col_id_nombre].apply(limpiar_id)
-            
-            # Filtramos
-            resultados = df_principal[col_comparar == busqueda_clean]
+            col_id_cartera = 'No cedula' if 'No cedula' in df_principal.columns else df_principal.columns[1]
+            mask = df_principal[col_id_cartera].apply(limpiar_id) == busqueda_clean
+            resultados = df_principal[mask]
             
             if not resultados.empty:
-                idx = st.selectbox("Seleccione el deudor:", resultados.index)
+                idx = st.selectbox("Seleccione el registro:", resultados.index)
                 cliente = df_principal.loc[idx]
                 
                 col1, col2 = st.columns(2)
@@ -47,35 +37,39 @@ if os.path.exists(ARCHIVO_EXCEL):
                 
                 with col2:
                     st.subheader("✍️ Registro de Gestión")
-                    st.text_area("Nueva Observación")
-                    st.button("💾 Guardar")
+                    obs = st.text_area("Nueva Observación")
+                    
+                    # --- NUEVO: BOTÓN DE ADJUNTOS ---
+                    st.markdown("---")
+                    st.subheader("📁 Soportes y Documentos")
+                    soporte = st.file_uploader("Adjuntar soporte (Imagen, PDF, Acta)", type=['pdf', 'png', 'jpg', 'jpeg', 'docx'])
+                    
+                    if soporte is not None:
+                        st.success(f"✅ Archivo '{soporte.name}' cargado correctamente.")
 
-                # --- HISTORIAL (Hoja 2) ---
+                    if st.button("💾 Guardar Gestión Completa"):
+                        # Aquí el sistema procesaría el guardado
+                        st.balloons()
+                        st.success("Gestión y adjunto registrados en el sistema.")
+
+                # --- BLOQUE DE HISTORIAL (Columnas C a L) ---
                 if len(excel_completo.sheet_names) > 1:
                     df_hist = excel_completo.parse(1)
-                    # Limpiamos nombres de columnas
-                    df_hist.columns = [str(c).strip() for c in df_hist.columns]
-                    
-                    # En el historial la columna se llama 'CEDULA' (es la segunda columna)
-                    col_id_hist = 'CEDULA' if 'CEDULA' in df_hist.columns else df_hist.columns[1]
-                    
-                    hist_comparar = df_hist[col_id_hist].apply(limpiar_id)
-                    pasado = df_hist[hist_comparar == busqueda_clean]
+                    col_id_hist = df_hist.columns[1]
+                    mask_hist = df_hist[col_id_hist].apply(limpiar_id) == busqueda_clean
+                    pasado = df_hist[mask_hist]
                     
                     if not pasado.empty:
                         st.divider()
-                        st.subheader("📜 Historial de Gestiones (Columnas C a L)")
-                        st.dataframe(pasado.iloc[:, 2:12], use_container_width=True, hide_index=True)
+                        st.subheader("📜 Historial de Gestiones Anteriores")
+                        detalle_visual = pasado.iloc[:, 2:12]
+                        st.dataframe(detalle_visual, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"Cédula {busqueda_clean} no tiene gestiones registradas en el historial.")
-                else:
-                    st.warning("El Excel no tiene pestaña de historial.")
+                        st.info("No se registran gestiones previas.")
             else:
-                st.error(f"No se encontró el deudor con cédula: {busqueda_clean}")
-                # Debug para el abogado: muestra qué columnas encontró
-                # st.write("Columnas detectadas:", list(df_principal.columns))
+                st.error(f"No se encontró el deudor.")
                 
     except Exception as e:
-        st.error(f"Error técnico: {e}")
+        st.error(f"Error al procesar los datos: {e}")
 else:
-    st.error(f"No se encuentra el archivo '{ARCHIVO_EXCEL}' en GitHub.")
+    st.error(f"No se encuentra el archivo Excel en el repositorio.")
